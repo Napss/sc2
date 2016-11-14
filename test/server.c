@@ -2,11 +2,16 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <dirent.h>
 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include "include/sockutil.h"
 
-void handle_connection(int cli_sockfd);
-void handle_arithmetic(int sockfd, int num0, int num1);
+void sendfile(int sockfd,char *path);
+void listfiles(int sockfd,char *path);
+char * getchoice(int cli_sockfd);
 
 int main(int argc, char** argv)
 {
@@ -21,13 +26,19 @@ int main(int argc, char** argv)
 	int cli_sockfd, pid;
 
 	/* Support multiple connections  */
+	char * path;
+
 	while (1) {
 		cli_sockfd = tcp_sock_accept(sockfd);
 		pid = fork();
 		if (pid < 0)
-			error("Can not folk");
-		else if (pid == 0){
-			handle_connection(cli_sockfd);
+			error("Can not fork");
+		else if (pid == 0){		
+
+			listfiles(cli_sockfd,".");
+			path = getchoice(cli_sockfd);
+			printf("%s\n", path);
+			sendfile(cli_sockfd,path);
 			puts("Closing client's socket");
 			close(cli_sockfd);
 		} else {
@@ -40,37 +51,55 @@ int main(int argc, char** argv)
 	close(sockfd);
 }
 
-void handle_connection(int cli_sockfd) {
-	char buffer[256];
 
-	if (read(cli_sockfd, buffer, 255) < 0)
-		error("Failed to read data");
-
-	char* token;
-	int num0, num1;
-
-	token = strtok(buffer, " ");
-	num0 = atoi(token);
-	token = strtok(NULL, " ");
-	num1 = atoi(token);
-
-	handle_arithmetic(cli_sockfd, num0, num1);
+void sendfile(int sockfd,char *file_path){
+	char buffer[BUFSIZ];
+	int filefd;
+	ssize_t read_return;
+    filefd = open(file_path, O_RDWR);
+	while (1) {
+		read_return = read(filefd, buffer, BUFSIZ);
+		//puts("send");
+		if (read_return == 0)
+			break;
+		if (read_return == -1) {
+			perror("read");
+			exit(EXIT_FAILURE);
+		}
+		if (write(sockfd, buffer, read_return) == -1) {
+			perror("write");
+			exit(EXIT_FAILURE);
+		}
+	}
+	puts("Finish");
 }
 
-void handle_arithmetic(int sockfd, int num0, int num1)
-{
-	char buffer[256];
-	if (abs(num0) >= 100000 || abs(num1) >= 100000) {
-		memset(buffer, '\0', 256);
-		strcpy(buffer, "Abslute values of number should be smaller than 100K");
-	} else if (num1 == 0) {
-		memset(buffer, '\0', 256);
-		sprintf(buffer, "Addition: %d\nSubtraction: %d\nMultiplication: %d\nDivision is invalid.\n", num0, num0, 0);
-	} else {
-		memset(buffer, '\0', 256);
-		sprintf(buffer, "Addition: %d\nSubtraction: %d\nMultiplication: %d\nDivision: %f.\n", num0 + num1, num0 - num1, num0 * num1, ((double) num0) / num1);
-	}
-	
-	if (write(sockfd, buffer, strlen(buffer)) < 0) 
-		error("Failed to write");
+void listfiles(int sockfd,char *file_path){
+	char buffer[BUFSIZ];
+    DIR *d;
+    struct dirent *dir;
+    char *list = "Fichiers  : ";
+	strcpy(buffer, list);
+    d = opendir(file_path);
+    if (d){
+        while ((dir = readdir(d)) != NULL){
+           strcat(buffer,dir->d_name);
+           strcat(buffer," ");
+
+        }
+       	strcat(buffer,"\n");
+
+        closedir(d);
+    }
+    send(sockfd, buffer, strlen(buffer), 0);
+}
+
+char * getchoice(int cli_sockfd){
+	char buffer[BUFSIZ];
+	char *choice;
+	int bytes = recv(cli_sockfd, buffer, sizeof(buffer), 0);
+	printf("%i\n", bytes);
+	buffer[bytes-1] = '\0';
+	char* p = &buffer[0] ;
+	return p ;
 }
