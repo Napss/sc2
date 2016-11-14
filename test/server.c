@@ -9,8 +9,6 @@
 #include <fcntl.h>
 #include "include/sockutil.h"
 
-void handle_connection(int cli_sockfd);
-void handle_arithmetic(int sockfd, int num0, int num1);
 void sendfile(int sockfd,char *path);
 void listfiles(int sockfd,char *path);
 char * getchoice(int cli_sockfd);
